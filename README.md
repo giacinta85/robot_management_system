@@ -93,7 +93,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone <repo-url>
+git clone https://github.com/giacinta85/robot_management_system.git
 cd robot_management_system
 
 # 2. （可选）调整配置

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Tabs, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Popconfirm, message, Switch, Card, Row, Col, Typography } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
-import { adminResourcesApi } from '../../api'
+import { Tabs, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Popconfirm, message, Switch, Card, Row, Col, Typography, Tag } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons'
+import { adminResourcesApi, authApi } from '../../api'
+import { useAuthStore } from '../../store/auth'
 
 // ── Generic CRUD Table Component ──────────────────────
 
@@ -382,6 +383,180 @@ function DepartmentsTab() {
 }
 
 
+// ── Users Tab ─────────────────────────────────
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: '管理员',
+  rd_test: '研发/测试',
+  maintenance: '维修工程师',
+}
+const ROLE_COLOR: Record<string, string> = {
+  admin: 'red',
+  rd_test: 'blue',
+  maintenance: 'orange',
+}
+
+function UsersTab() {
+  const [data, setData] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<any>(null)
+  const [pwdTarget, setPwdTarget] = useState<any>(null)
+  const [createForm] = Form.useForm()
+  const [editForm] = Form.useForm()
+  const [pwdForm] = Form.useForm()
+  const currentUserId = useAuthStore(s => s.userId)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await authApi.listUsers()
+      setData(r.data)
+    } catch {
+      message.error('加载用户列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { load() }, [])
+
+  const onCreate = async (values: any) => {
+    try {
+      await authApi.createUser(values)
+      message.success('账号已创建')
+      setCreateOpen(false)
+      createForm.resetFields()
+      load()
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '创建失败')
+    }
+  }
+
+  const openEdit = (row: any) => {
+    setEditTarget(row)
+    editForm.setFieldsValue({ role: row.role, full_name: row.full_name })
+  }
+
+  const onEditSave = async (values: any) => {
+    try {
+      await authApi.updateUser(editTarget.id, values)
+      message.success('已更新')
+      setEditTarget(null)
+      load()
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '更新失败')
+    }
+  }
+
+  const onResetPwd = async (values: any) => {
+    try {
+      await authApi.updateUser(pwdTarget.id, { password: values.password })
+      message.success('密码已重置')
+      setPwdTarget(null)
+      pwdForm.resetFields()
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '重置失败')
+    }
+  }
+
+  const onDelete = async (id: string) => {
+    try {
+      await authApi.deleteUser(id)
+      message.success('已删除')
+      load()
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '删除失败')
+    }
+  }
+
+  const roleOptions = [
+    { value: 'admin', label: '管理员' },
+    { value: 'rd_test', label: '研发/测试' },
+    { value: 'maintenance', label: '维修工程师' },
+  ]
+
+  const columns = [
+    { title: '用户名', dataIndex: 'username', width: 140 },
+    { title: '姓名', dataIndex: 'full_name', render: (v: string) => v || '-' },
+    {
+      title: '角色', dataIndex: 'role', width: 130,
+      render: (r: string) => <Tag color={ROLE_COLOR[r] || 'default'}>{ROLE_LABELS[r] || r}</Tag>,
+    },
+    { title: '状态', dataIndex: 'is_active', width: 80, render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? '正常' : '禁用'}</Tag> },
+    { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '-' },
+    {
+      title: '操作', width: 180,
+      render: (_: any, row: any) => (
+        <Space size={4}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>编辑角色</Button>
+          <Button size="small" icon={<KeyOutlined />} onClick={() => { setPwdTarget(row); pwdForm.resetFields() }}>重置密码</Button>
+          {row.id !== currentUserId && (
+            <Popconfirm title={`确认删除账号「${row.username}」？此操作不可撤销。`} onConfirm={() => onDelete(row.id)} okText="删除" cancelText="取消" okButtonProps={{ danger: true }}>
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <>
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} style={{ marginBottom: 12 }}>新增账号</Button>
+      <Table dataSource={data} columns={columns} rowKey="id" loading={loading} size="small" />
+
+      {/* Create Modal */}
+      <Modal title="新增账号" open={createOpen} onCancel={() => { setCreateOpen(false); createForm.resetFields() }} footer={null}>
+        <Form form={createForm} layout="vertical" onFinish={onCreate}>
+          <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+            <Input placeholder="英文、数字，唯一" />
+          </Form.Item>
+          <Form.Item label="姓名（可选）" name="full_name">
+            <Input placeholder="显示名称" />
+          </Form.Item>
+          <Form.Item label="角色" name="role" initialValue="rd_test" rules={[{ required: true }]}>
+            <Select options={roleOptions} />
+          </Form.Item>
+          <Form.Item label="初始密码" name="password" rules={[{ required: true, min: 6, message: '至少6位' }]}>
+            <Input.Password placeholder="至少6位" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block>创建</Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit Role Modal */}
+      <Modal title={`编辑账号：${editTarget?.username}`} open={!!editTarget} onCancel={() => setEditTarget(null)} footer={null}>
+        <Form form={editForm} layout="vertical" onFinish={onEditSave}>
+          <Form.Item label="姓名" name="full_name">
+            <Input />
+          </Form.Item>
+          <Form.Item label="角色" name="role" rules={[{ required: true }]}>
+            <Select options={roleOptions} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block>保存</Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Reset Password Modal */}
+      <Modal title={`重置密码：${pwdTarget?.username}`} open={!!pwdTarget} onCancel={() => { setPwdTarget(null); pwdForm.resetFields() }} footer={null}>
+        <Form form={pwdForm} layout="vertical" onFinish={onResetPwd}>
+          <Form.Item label="新密码" name="password" rules={[{ required: true, min: 6, message: '至少6位' }]}>
+            <Input.Password placeholder="至少6位" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block>确认重置</Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  )
+}
+
+
 // ── Main Page ─────────────────────────────────
 
 export default function AdminResourcesPage() {
@@ -396,6 +571,7 @@ export default function AdminResourcesPage() {
       <h2>资源库管理</h2>
       <Tabs
         items={[
+          { key: 'users', label: '账号管理', children: <UsersTab /> },
           { key: 'features', label: '功能开关', children: <FeatureFlagsTab /> },
           { key: 'models', label: '机器型号', children: <MachineModelsTab /> },
           { key: 'departments', label: '部门管理', children: <DepartmentsTab /> },

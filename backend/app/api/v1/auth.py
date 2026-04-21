@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
@@ -6,9 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash, oauth2_scheme, decode_token
 from app.models.models import User, UserRole
-from app.schemas.schemas import Token, UserCreate, UserOut
+from app.schemas.schemas import Token, UserCreate, UserOut, UserUpdate
+from app.api.v1.audit_helpers import log_action, model_to_dict
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _user_safe_dict(user: User) -> dict:
+    """Serialize user without hashed_password for audit log."""
+    d = model_to_dict(user)
+    d.pop("hashed_password", None)
+    return d
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
@@ -38,11 +48,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     return Token(access_token=token, role=user.role, user_id=user.id, full_name=user.full_name)
 
 
+@router.get("/users", response_model=list[UserOut])
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.admin)),
+):
+    result = await db.execute(select(User).order_by(User.created_at))
+    return result.scalars().all()
+
+
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(
     body: UserCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles(UserRole.admin)),
+    current_user: User = Depends(require_roles(UserRole.admin)),
 ):
     result = await db.execute(select(User).where(User.username == body.username))
     if result.scalar_one_or_none():
@@ -54,9 +73,81 @@ async def create_user(
         role=body.role,
     )
     db.add(user)
+    await db.flush()  # populate user.id before logging
+    await log_action(
+        db,
+        user_id=str(current_user.id),
+        username=current_user.username,
+        table_name="users",
+        record_id=str(user.id),
+        operation="create",
+        before=None,
+        after=_user_safe_dict(user),
+        description=f"创建账号 {user.username}（角色: {user.role}）",
+    )
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: UUID,
+    body: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin)),
+):
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    before = _user_safe_dict(user)
+    if body.role is not None:
+        user.role = body.role
+    if body.full_name is not None:
+        user.full_name = body.full_name
+    if body.password:
+        user.hashed_password = get_password_hash(body.password)
+    await log_action(
+        db,
+        user_id=str(current_user.id),
+        username=current_user.username,
+        table_name="users",
+        record_id=str(user.id),
+        operation="update",
+        before=before,
+        after=_user_safe_dict(user),
+        description=f"修改账号 {user.username}",
+    )
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin)),
+):
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能删除自己的账号")
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    before = _user_safe_dict(user)
+    await log_action(
+        db,
+        user_id=str(current_user.id),
+        username=current_user.username,
+        table_name="users",
+        record_id=str(user.id),
+        operation="delete",
+        before=before,
+        after=None,
+        description=f"删除账号 {user.username}",
+    )
+    await db.delete(user)
+    await db.commit()
 
 
 @router.get("/me", response_model=UserOut)

@@ -35,6 +35,12 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class UserUpdate(BaseModel):
+    role: Optional[UserRole] = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+
+
 # ── Machine ───────────────────────────────────
 
 class MachineCreate(BaseModel):

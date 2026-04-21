@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import require_roles
+from app.api.v1.audit_helpers import log_action, model_to_dict
 from app.core.database import get_db
 from app.models.models import MaintenanceRecord, Machine, MachineStatus, UserRole
 from app.schemas.schemas import MaintenanceCreate, MaintenanceOut, MaintenanceUpdate
@@ -39,6 +40,18 @@ async def create_record(
 
     record = MaintenanceRecord(**body.model_dump(), technician_id=current_user.id)
     db.add(record)
+    await db.flush()
+    await log_action(
+        db,
+        user_id=str(current_user.id),
+        username=current_user.username,
+        table_name="maintenance_records",
+        record_id=str(record.id),
+        operation="create",
+        before=None,
+        after=model_to_dict(record),
+        description=f"创建维修记录（机器: {body.machine_id}）",
+    )
     await db.commit()
     await db.refresh(record)
     return record
@@ -61,11 +74,12 @@ async def update_record(
     record_id: UUID,
     body: MaintenanceUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin, UserRole.maintenance)),
+    current_user=Depends(require_roles(UserRole.admin, UserRole.maintenance)),
 ):
     record = await db.get(MaintenanceRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
+    before = model_to_dict(record)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(record, k, v)
     # If resolved, set machine back to idle
@@ -73,6 +87,17 @@ async def update_record(
         machine = await db.get(Machine, record.machine_id)
         if machine:
             machine.status = MachineStatus.idle
+    await log_action(
+        db,
+        user_id=str(current_user.id),
+        username=current_user.username,
+        table_name="maintenance_records",
+        record_id=str(record.id),
+        operation="update",
+        before=before,
+        after=model_to_dict(record),
+        description=f"更新维修记录 {record.id}",
+    )
     await db.commit()
     await db.refresh(record)
     return record
@@ -82,10 +107,22 @@ async def update_record(
 async def delete_record(
     record_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin, UserRole.maintenance)),
+    current_user=Depends(require_roles(UserRole.admin, UserRole.maintenance)),
 ):
     record = await db.get(MaintenanceRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
+    before = model_to_dict(record)
+    await log_action(
+        db,
+        user_id=str(current_user.id),
+        username=current_user.username,
+        table_name="maintenance_records",
+        record_id=str(record.id),
+        operation="delete",
+        before=before,
+        after=None,
+        description=f"删除维修记录 {record.id}",
+    )
     await db.delete(record)
     await db.commit()

@@ -8,8 +8,12 @@ export const authApi = {
     return api.post('/auth/login', form, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
   },
   me: () => api.get('/auth/me'),
+  listUsers: () => api.get('/auth/users'),
   createUser: (data: { username: string; password: string; full_name?: string; role: string }) =>
     api.post('/auth/users', data),
+  updateUser: (id: string, data: { role?: string; full_name?: string; password?: string }) =>
+    api.patch(`/auth/users/${id}`, data),
+  deleteUser: (id: string) => api.delete(`/auth/users/${id}`),
 }
 
 export const machinesApi = {

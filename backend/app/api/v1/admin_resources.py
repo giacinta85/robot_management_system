@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import require_roles
+from app.api.v1.audit_helpers import log_action, model_to_dict
 from app.core.database import get_db
 from app.models.models import MachineModelInfo, DancePolicy, MotionAction, VoicePackage, SystemFeature, Department, UserRole
 from app.schemas.schemas import (
@@ -33,10 +34,14 @@ async def list_machine_models(db: AsyncSession = Depends(get_db)):
 async def create_machine_model(
     body: MachineModelInfoCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = MachineModelInfo(**body.model_dump())
     db.add(obj)
+    await db.flush()
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="machine_model_infos", record_id=str(obj.id), operation="create",
+        before=None, after=model_to_dict(obj), description=f"新增机器型号 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -47,13 +52,17 @@ async def update_machine_model(
     obj_id: UUID,
     body: MachineModelInfoCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(MachineModelInfo, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(obj, k, v)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="machine_model_infos", record_id=str(obj.id), operation="update",
+        before=before, after=model_to_dict(obj), description=f"修改机器型号 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -63,11 +72,15 @@ async def update_machine_model(
 async def delete_machine_model(
     obj_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(MachineModelInfo, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="machine_model_infos", record_id=str(obj.id), operation="delete",
+        before=before, after=None, description=f"删除机器型号 {obj.name}")
     await db.delete(obj)
     await db.commit()
 
@@ -86,11 +99,15 @@ async def list_dance_policies(machine_model: str | None = None, db: AsyncSession
 async def create_dance_policy(
     body: DancePolicyCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     from datetime import datetime, timezone
     obj = DancePolicy(**body.model_dump(), created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
     db.add(obj)
+    await db.flush()
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="dance_policies", record_id=str(obj.id), operation="create",
+        before=None, after=model_to_dict(obj), description=f"新增舞蹈策略 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -101,13 +118,17 @@ async def update_dance_policy(
     obj_id: UUID,
     body: DancePolicyCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(DancePolicy, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="dance_policies", record_id=str(obj.id), operation="update",
+        before=before, after=model_to_dict(obj), description=f"修改舞蹈策略 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -116,11 +137,15 @@ async def update_dance_policy(
 @router.delete("/dance-policies/{obj_id}", status_code=204)
 async def delete_dance_policy(
     obj_id: UUID, db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(DancePolicy, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="dance_policies", record_id=str(obj.id), operation="delete",
+        before=before, after=None, description=f"删除舞蹈策略 {obj.name}")
     await db.delete(obj)
     await db.commit()
 
@@ -139,11 +164,15 @@ async def list_motion_actions(machine_model: str | None = None, db: AsyncSession
 async def create_motion_action(
     body: MotionActionCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     from datetime import datetime, timezone
     obj = MotionAction(**body.model_dump(), created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
     db.add(obj)
+    await db.flush()
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="motion_actions", record_id=str(obj.id), operation="create",
+        before=None, after=model_to_dict(obj), description=f"新增动作集 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -154,13 +183,17 @@ async def update_motion_action(
     obj_id: UUID,
     body: MotionActionCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(MotionAction, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="motion_actions", record_id=str(obj.id), operation="update",
+        before=before, after=model_to_dict(obj), description=f"修改动作集 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -169,11 +202,15 @@ async def update_motion_action(
 @router.delete("/motion-actions/{obj_id}", status_code=204)
 async def delete_motion_action(
     obj_id: UUID, db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(MotionAction, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="motion_actions", record_id=str(obj.id), operation="delete",
+        before=before, after=None, description=f"删除动作集 {obj.name}")
     await db.delete(obj)
     await db.commit()
 
@@ -192,11 +229,15 @@ async def list_voice_packages(machine_model: str | None = None, db: AsyncSession
 async def create_voice_package(
     body: VoicePackageCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     from datetime import datetime, timezone
     obj = VoicePackage(**body.model_dump(), created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
     db.add(obj)
+    await db.flush()
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="voice_packages", record_id=str(obj.id), operation="create",
+        before=None, after=model_to_dict(obj), description=f"新增语音包 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -207,13 +248,17 @@ async def update_voice_package(
     obj_id: UUID,
     body: VoicePackageCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(VoicePackage, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="voice_packages", record_id=str(obj.id), operation="update",
+        before=before, after=model_to_dict(obj), description=f"修改语音包 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -222,11 +267,15 @@ async def update_voice_package(
 @router.delete("/voice-packages/{obj_id}", status_code=204)
 async def delete_voice_package(
     obj_id: UUID, db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(VoicePackage, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="voice_packages", record_id=str(obj.id), operation="delete",
+        before=before, after=None, description=f"删除语音包 {obj.name}")
     await db.delete(obj)
     await db.commit()
 
@@ -282,10 +331,14 @@ async def list_departments(db: AsyncSession = Depends(get_db)):
 async def create_department(
     body: DepartmentCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = Department(**body.model_dump())
     db.add(obj)
+    await db.flush()
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="departments", record_id=str(obj.id), operation="create",
+        before=None, after=model_to_dict(obj), description=f"新增部门 {obj.name}")
     await db.commit()
     await db.refresh(obj)
     return obj
@@ -295,10 +348,14 @@ async def create_department(
 async def delete_department(
     obj_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles(UserRole.admin)),
+    current_user=Depends(require_roles(UserRole.admin)),
 ):
     obj = await db.get(Department, obj_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Not found")
+    before = model_to_dict(obj)
+    await log_action(db, user_id=str(current_user.id), username=current_user.username,
+        table_name="departments", record_id=str(obj.id), operation="delete",
+        before=before, after=None, description=f"删除部门 {obj.name}")
     await db.delete(obj)
     await db.commit()

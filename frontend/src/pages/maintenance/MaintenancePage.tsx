@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Form, DatePicker, Input, InputNumber, Select, message, Space } from 'antd'
-import { CheckOutlined, PlusOutlined } from '@ant-design/icons'
+import { Table, Tag, Button, Modal, Form, DatePicker, Input, Select, message, Space, Card, Descriptions, Typography, Switch, Divider, Popconfirm } from 'antd'
+import { CheckOutlined, PlusOutlined, EditOutlined, ArrowLeftOutlined, DeleteOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import { maintenanceApi, machinesApi } from '../../api'
 
 export default function MaintenancePage() {
   const [records, setRecords] = useState<any[]>([])
   const [machines, setMachines] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [resolveId, setResolveId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [resolveForm] = Form.useForm()
+  const [editing, setEditing] = useState<any>(null)   // 全页面编辑
   const [addForm] = Form.useForm()
+  const [editForm] = Form.useForm()
 
   const load = async () => {
     setLoading(true)
@@ -25,16 +26,44 @@ export default function MaintenancePage() {
 
   useEffect(() => { load() }, [])
 
-  const onResolve = async (values: any) => {
-    await maintenanceApi.update(resolveId!, {
-      repair_detail: values.repair_detail,
-      repair_end_date: values.repair_end_date?.format('YYYY-MM-DD'),
-      is_resolved: true,
+  const openEdit = (record: any) => {
+    setEditing(record)
+    editForm.setFieldsValue({
+      location: record.location,
+      damage_date: record.damage_date ? dayjs(record.damage_date) : null,
+      damage_cause: record.damage_cause,
+      damage_description: record.damage_description,
+      repair_start_date: record.repair_start_date ? dayjs(record.repair_start_date) : null,
+      repair_end_date: record.repair_end_date ? dayjs(record.repair_end_date) : null,
+      repair_detail: record.repair_detail,
+      is_resolved: record.is_resolved,
     })
-    message.success('维修已标记完成')
-    setResolveId(null)
-    resolveForm.resetFields()
-    load()
+  }
+
+  const onEditSave = async (values: any) => {
+    try {
+      await maintenanceApi.update(editing.id, {
+        ...values,
+        damage_date: values.damage_date?.format('YYYY-MM-DD'),
+        repair_start_date: values.repair_start_date?.format('YYYY-MM-DD'),
+        repair_end_date: values.repair_end_date?.format('YYYY-MM-DD'),
+      })
+      message.success('维修记录已更新')
+      setEditing(null)
+      load()
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '保存失败')
+    }
+  }
+
+  const onDelete = async (id: string) => {
+    try {
+      await maintenanceApi.delete(id)
+      message.success('已删除')
+      load()
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '删除失败')
+    }
   }
 
   const onAdd = async (values: any) => {
@@ -62,34 +91,86 @@ export default function MaintenancePage() {
   }
 
   const columns = [
+    { title: '机器', dataIndex: 'machine_id', render: (id: string) => machineLabel(id), ellipsis: true },
+    { title: '地点', dataIndex: 'location', render: (v: string) => v || '-' },
+    { title: '损坏日期', dataIndex: 'damage_date' },
+    { title: '损坏原因', dataIndex: 'damage_cause', ellipsis: true },
+    { title: '维修开始', dataIndex: 'repair_start_date', render: (v: string) => v || '-' },
+    { title: '修复日期', dataIndex: 'repair_end_date', render: (v: string) => v || '-' },
+    { title: '状态', dataIndex: 'is_resolved', render: (v: boolean) => <Tag color={v ? 'green' : 'orange'}>{v ? '已修复' : '维修中'}</Tag> },
     {
-      title: '机器',
-      dataIndex: 'machine_id',
-      key: 'machine_id',
-      render: (id: string) => machineLabel(id),
-      ellipsis: true,
-    },
-    { title: '地点', dataIndex: 'location', key: 'location' },
-    { title: '损坏日期', dataIndex: 'damage_date', key: 'damage_date' },
-    { title: '损坏原因', dataIndex: 'damage_cause', key: 'damage_cause', ellipsis: true },
-    { title: '维修开始', dataIndex: 'repair_start_date', key: 'repair_start_date' },
-    { title: '修复日期', dataIndex: 'repair_end_date', key: 'repair_end_date' },
-    {
-      title: '状态',
-      dataIndex: 'is_resolved',
-      key: 'is_resolved',
-      render: (v: boolean) => <Tag color={v ? 'green' : 'orange'}>{v ? '已修复' : '维修中'}</Tag>,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_: any, record: any) =>
-        !record.is_resolved ? (
-          <Button size="small" icon={<CheckOutlined />} onClick={() => setResolveId(record.id)}>标记完成</Button>
-        ) : null,
+      title: '操作', width: 130,
+      render: (_: any, record: any) => (
+        <Space size={4}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>编辑</Button>
+          <Popconfirm title="确认删除此条维修记录？" onConfirm={() => onDelete(record.id)} okText="删除" cancelText="取消">
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
     },
   ]
 
+  // ── 全页面编辑（同审批页面模式）─────────────────────────────
+  if (editing) {
+    return (
+      <div>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => setEditing(null)} style={{ marginBottom: 16 }}>
+          返回列表
+        </Button>
+        <Typography.Title level={4}>编辑维修记录</Typography.Title>
+
+        <Card title="当前信息" style={{ marginBottom: 16 }}>
+          <Descriptions bordered column={2} size="small">
+            <Descriptions.Item label="机器">{machineLabel(editing.machine_id)}</Descriptions.Item>
+            <Descriptions.Item label="原始损坏日期">{editing.damage_date}</Descriptions.Item>
+            <Descriptions.Item label="原始损坏原因" span={2}>{editing.damage_cause}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+
+        <Card title="修改内容">
+          <Form form={editForm} layout="vertical" onFinish={onEditSave} style={{ maxWidth: 600 }}>
+            <Form.Item label="损坏/维修地点" name="location">
+              <Input placeholder="例：上海展馆 / 公司仓库" />
+            </Form.Item>
+            <Form.Item label="损坏日期" name="damage_date">
+              <DatePicker style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="损坏原因" name="damage_cause">
+              <Input placeholder="例：碰撞、进水、电路故障" />
+            </Form.Item>
+            <Form.Item label="损坏描述" name="damage_description">
+              <Input.TextArea rows={3} placeholder="详细描述损坏情况" />
+            </Form.Item>
+
+            <Divider orientation="left">维修进度</Divider>
+
+            <Form.Item label="维修开始日期" name="repair_start_date">
+              <DatePicker style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="维修详情" name="repair_detail">
+              <Input.TextArea rows={3} placeholder="描述维修过程、更换零件等" />
+            </Form.Item>
+            <Form.Item label="修复完成日期" name="repair_end_date">
+              <DatePicker style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="是否已修复" name="is_resolved" valuePropName="checked">
+              <Switch checkedChildren="已修复" unCheckedChildren="维修中" />
+            </Form.Item>
+
+            <Form.Item>
+              <Space>
+                <Button type="primary" htmlType="submit">保存修改</Button>
+                <Button onClick={() => setEditing(null)}>取消</Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </Card>
+      </div>
+    )
+  }
+
+  // ── 列表页 ────────────────────────────────────────────────
   return (
     <div>
       <Space style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
@@ -98,7 +179,6 @@ export default function MaintenancePage() {
       </Space>
       <Table dataSource={records} columns={columns} rowKey="id" loading={loading} size="small" scroll={{ x: true }} />
 
-      {/* 新增维修记录 */}
       <Modal title="新增维修记录" open={addOpen} onCancel={() => setAddOpen(false)} footer={null} width={520}>
         <Form form={addForm} layout="vertical" onFinish={onAdd}>
           <Form.Item label="机器" name="machine_id" rules={[{ required: true, message: '请选择机器' }]}>
@@ -126,21 +206,6 @@ export default function MaintenancePage() {
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block>提交</Button>
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 标记维修完成 */}
-      <Modal title="标记维修完成" open={!!resolveId} onCancel={() => setResolveId(null)} footer={null}>
-        <Form form={resolveForm} layout="vertical" onFinish={onResolve}>
-          <Form.Item label="修复日期" name="repair_end_date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="维修详情" name="repair_detail">
-            <Input.TextArea rows={3} placeholder="描述维修过程和更换的零件" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block>确认完成</Button>
           </Form.Item>
         </Form>
       </Modal>

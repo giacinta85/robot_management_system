@@ -21,6 +21,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
     expose:
       - "8000"
 
@@ -43,3 +45,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

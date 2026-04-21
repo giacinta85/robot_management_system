@@ -1,6 +1,9 @@
-import { Card, Typography, Row, Col } from 'antd'
-import { RobotOutlined, ToolOutlined, CalendarOutlined, FileTextOutlined } from '@ant-design/icons'
+import { useEffect, useState } from 'react'
+import { Card, Typography, Row, Col, Statistic, Divider } from 'antd'
+import { RobotOutlined, ToolOutlined, CalendarOutlined, FileTextOutlined,
+  CheckCircleOutlined, SyncOutlined, WarningOutlined, StopOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
+import { machinesApi } from '../api'
 
 const roleLabel: Record<string, string> = {
   admin: '管理员',
@@ -11,9 +14,50 @@ const roleLabel: Record<string, string> = {
 
 export default function DashboardPage() {
   const { role, fullName } = useAuthStore()
+  const [stats, setStats] = useState<any>(null)
+
+  useEffect(() => {
+    machinesApi.getStats().then((r) => setStats(r.data)).catch(() => {})
+  }, [])
+
   return (
     <div>
       <Typography.Title level={4}>欢迎回来，{fullName} ({role ? roleLabel[role] : ''})</Typography.Title>
+
+      {stats && (
+        <>
+          <Divider orientation="left">机器状态总览</Divider>
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={12} sm={8} md={4}>
+              <Card>
+                <Statistic title="机器总数" value={stats.total} prefix={<RobotOutlined />} valueStyle={{ color: '#1677ff' }} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <Card>
+                <Statistic title="空闲" value={stats.idle} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <Card>
+                <Statistic title="使用中" value={stats.in_use} prefix={<SyncOutlined />} valueStyle={{ color: '#1677ff' }} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <Card>
+                <Statistic title="维修中" value={stats.under_repair} prefix={<WarningOutlined />} valueStyle={{ color: '#fa8c16' }} />
+              </Card>
+            </Col>
+            <Col xs={12} sm={8} md={5}>
+              <Card>
+                <Statistic title="已退役" value={stats.retired} prefix={<StopOutlined />} valueStyle={{ color: '#999' }} />
+              </Card>
+            </Col>
+          </Row>
+        </>
+      )}
+
+      <Divider orientation="left">功能模块</Divider>
       <Row gutter={[16, 16]}>
         <Col xs={12} md={6}>
           <Card>

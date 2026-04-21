@@ -2,6 +2,7 @@ import { Layout, Menu, Button, Avatar, Typography, Dropdown } from 'antd'
 import {
   RobotOutlined, ToolOutlined, CalendarOutlined,
   FileTextOutlined, DashboardOutlined, UserOutlined, LogoutOutlined,
+  DatabaseOutlined, SendOutlined, CustomerServiceOutlined, AuditOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
@@ -14,6 +15,10 @@ const menuItems = [
   { key: '/maintenance', icon: <ToolOutlined />, label: '维修记录', roles: ['admin', 'maintenance', 'rd_test'] },
   { key: '/requests', icon: <FileTextOutlined />, label: '市场申请', roles: ['admin'] },
   { key: '/calendar', icon: <CalendarOutlined />, label: '可用性看板', roles: ['admin'] },
+  { key: '/resources', icon: <DatabaseOutlined />, label: '资源库管理', roles: ['admin'] },
+  { key: '/shipping-list', icon: <SendOutlined />, label: '发货管理', roles: ['admin'] },
+  { key: '/after-sales-list', icon: <CustomerServiceOutlined />, label: '售后管理', roles: ['admin'] },
+  { key: '/audit-logs', icon: <AuditOutlined />, label: '操作日志', roles: ['admin'] },
 ]
 
 export default function MainLayout() {

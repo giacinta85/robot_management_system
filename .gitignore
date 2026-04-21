@@ -30,3 +30,10 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Database / Docker volumes (never commit persistent data)
+postgres_data/
+uploads_data/
+pgdata/
+*.sql.bak
+*.bak

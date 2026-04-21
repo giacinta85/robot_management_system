@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Tabs, Descriptions, Tag, Button, Table, Modal, Form, Input, Select, DatePicker, message, Space } from 'antd'
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons'
-import { machinesApi, maintenanceApi } from '../../api'
+import { Tabs, Descriptions, Tag, Button, Table, Modal, Form, Input, Select, DatePicker, message } from 'antd'
+import { ArrowLeftOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
+import { machinesApi, maintenanceApi, adminResourcesApi } from '../../api'
 
 const statusLabel: Record<string, string> = { idle: '空闲', in_use: '使用中', under_repair: '维修中', retired: '已退役' }
 const statusColor: Record<string, string> = { idle: 'green', in_use: 'blue', under_repair: 'red', retired: 'default' }
 const deptLabel: Record<string, string> = { rd: '研发', test: '测试', marketing: '市场' }
+const usageLabel: Record<string, string> = { motion_control: '运控', testing: '测试', software: '软件', marketing: '市场' }
 
 export default function MachineDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -16,14 +17,24 @@ export default function MachineDetailPage() {
   const [maintenances, setMaintenances] = useState<any[]>([])
   const [maintOpen, setMaintOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [models, setModels] = useState<string[]>([])
+  const [departments, setDepartments] = useState<string[]>([])
   const [form] = Form.useForm()
   const [aForm] = Form.useForm()
+  const [eForm] = Form.useForm()
 
-  useEffect(() => {
+  const reload = () => {
     if (!id) return
     machinesApi.get(id).then((r) => setMachine(r.data))
     machinesApi.listAssignments(id).then((r) => setAssignments(r.data))
     maintenanceApi.list(id).then((r) => setMaintenances(r.data))
+  }
+
+  useEffect(() => {
+    reload()
+    adminResourcesApi.listMachineModels().then(r => setModels(r.data.map((m: any) => m.name)))
+    adminResourcesApi.listDepartments().then(r => setDepartments(r.data.map((d: any) => d.name)))
   }, [id])
 
   const onMaintSubmit = async (values: any) => {
@@ -36,8 +47,7 @@ export default function MachineDetailPage() {
     message.success('维修记录已创建')
     setMaintOpen(false)
     form.resetFields()
-    maintenanceApi.list(id).then((r) => setMaintenances(r.data))
-    machinesApi.get(id!).then((r) => setMachine(r.data))
+    reload()
   }
 
   const onAssignSubmit = async (values: any) => {
@@ -52,10 +62,31 @@ export default function MachineDetailPage() {
     machinesApi.listAssignments(id!).then((r) => setAssignments(r.data))
   }
 
+  const openEdit = () => {
+    eForm.setFieldsValue({
+      model: machine.model,
+      description: machine.description,
+      status: machine.status,
+      usage_type: machine.usage_type,
+      firmware_version: machine.firmware_version,
+      image_version: machine.image_version,
+      department: machine.department,
+    })
+    setEditOpen(true)
+  }
+
+  const onEditSubmit = async (values: any) => {
+    await machinesApi.update(id!, values)
+    message.success('已更新')
+    setEditOpen(false)
+    machinesApi.get(id!).then((r) => setMachine(r.data))
+  }
+
   if (!machine) return null
 
   const maintCols = [
     { title: '损坏日期', dataIndex: 'damage_date' },
+    { title: '地点', dataIndex: 'location', render: (v: string) => v || '-' },
     { title: '损坏原因', dataIndex: 'damage_cause' },
     { title: '损坏描述', dataIndex: 'damage_description' },
     { title: '维修详情', dataIndex: 'repair_detail' },
@@ -73,11 +104,18 @@ export default function MachineDetailPage() {
   return (
     <div>
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/machines')} style={{ marginBottom: 16 }}>返回列表</Button>
-      <Descriptions bordered title={`机器详情：${machine.serial_number}`} style={{ marginBottom: 24 }}>
+      <Descriptions
+        bordered
+        title={`机器详情：${machine.serial_number}`}
+        style={{ marginBottom: 24 }}
+        extra={<Button icon={<EditOutlined />} onClick={openEdit}>编辑</Button>}
+      >
         <Descriptions.Item label="序列号">{machine.serial_number}</Descriptions.Item>
         <Descriptions.Item label="型号">{machine.model}</Descriptions.Item>
         <Descriptions.Item label="状态"><Tag color={statusColor[machine.status]}>{statusLabel[machine.status]}</Tag></Descriptions.Item>
-        <Descriptions.Item label="购入日期">{machine.purchased_at || '-'}</Descriptions.Item>
+        <Descriptions.Item label="用途">{machine.usage_type ? usageLabel[machine.usage_type] : '-'}</Descriptions.Item>
+        <Descriptions.Item label="固件版本">{machine.firmware_version || '-'}</Descriptions.Item>
+        <Descriptions.Item label="镜像">{machine.image_version || '-'}</Descriptions.Item>
         <Descriptions.Item label="描述" span={3}>{machine.description || '-'}</Descriptions.Item>
       </Descriptions>
 
@@ -104,7 +142,50 @@ export default function MachineDetailPage() {
         },
       ]} />
 
-      {/* Maintenance Modal */}
+      <Modal title="编辑机器信息" open={editOpen} onCancel={() => setEditOpen(false)} footer={null}>
+        <Form form={eForm} layout="vertical" onFinish={onEditSubmit}>
+          <Form.Item label="型号" name="model" rules={[{ required: true }]}>
+            <Select
+              showSearch
+              placeholder="选择型号"
+              options={models.map(m => ({ value: m, label: m }))}
+              optionFilterProp="label"
+            />
+          </Form.Item>
+          <Form.Item label="所属部门" name="department">
+            <Select allowClear placeholder="选择部门" options={departments.map(d => ({ value: d, label: d }))} />
+          </Form.Item>
+          <Form.Item label="状态" name="status">
+            <Select options={[
+              { value: 'idle', label: '空闲' },
+              { value: 'in_use', label: '使用中' },
+              { value: 'under_repair', label: '维修中' },
+              { value: 'retired', label: '已退役' },
+            ]} />
+          </Form.Item>
+          <Form.Item label="用途" name="usage_type">
+            <Select allowClear placeholder="选择用途" options={[
+              { value: 'motion_control', label: '运控' },
+              { value: 'testing', label: '测试' },
+              { value: 'software', label: '软件' },
+              { value: 'marketing', label: '市场' },
+            ]} />
+          </Form.Item>
+          <Form.Item label="固件版本" name="firmware_version">
+            <Input placeholder="例：v1.2.3" />
+          </Form.Item>
+          <Form.Item label="镜像" name="image_version">
+            <Input placeholder="例：ros2-humble-20240101" />
+          </Form.Item>
+          <Form.Item label="描述" name="description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block>保存</Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
       <Modal title="新增维修记录" open={maintOpen} onCancel={() => setMaintOpen(false)} footer={null}>
         <Form form={form} layout="vertical" onFinish={onMaintSubmit}>
           <Form.Item label="损坏日期" name="damage_date" rules={[{ required: true }]}>
@@ -128,7 +209,6 @@ export default function MachineDetailPage() {
         </Form>
       </Modal>
 
-      {/* Assignment Modal */}
       <Modal title="新增使用记录" open={assignOpen} onCancel={() => setAssignOpen(false)} footer={null}>
         <Form form={aForm} layout="vertical" onFinish={onAssignSubmit}>
           <Form.Item label="使用部门" name="department" rules={[{ required: true }]}>

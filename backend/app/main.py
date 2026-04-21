@@ -1,8 +1,10 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
 from app.api.v1 import router
@@ -12,6 +14,9 @@ from app.core.security import get_password_hash
 from app.models.models import Base, User, UserRole
 
 logger = logging.getLogger(__name__)
+
+UPLOAD_DIR = "/app/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 async def create_first_admin():
@@ -50,6 +55,8 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+
+app.mount("/api/static/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 @app.get("/health")

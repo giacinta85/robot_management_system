@@ -44,6 +44,18 @@ async def create_record(
     return record
 
 
+@router.get("/{record_id}", response_model=MaintenanceOut)
+async def get_record(
+    record_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles(UserRole.admin, UserRole.maintenance, UserRole.rd_test)),
+):
+    record = await db.get(MaintenanceRecord, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return record
+
+
 @router.patch("/{record_id}", response_model=MaintenanceOut)
 async def update_record(
     record_id: UUID,
@@ -64,3 +76,16 @@ async def update_record(
     await db.commit()
     await db.refresh(record)
     return record
+
+
+@router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_record(
+    record_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles(UserRole.admin, UserRole.maintenance)),
+):
+    record = await db.get(MaintenanceRecord, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    await db.delete(record)
+    await db.commit()

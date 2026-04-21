@@ -34,6 +34,13 @@ class MachineStatus(str, enum.Enum):
     retired = "retired"
 
 
+class MachineUsageType(str, enum.Enum):
+    motion_control = "motion_control"  # 运控
+    testing = "testing"               # 测试
+    software = "software"              # 软件
+    marketing = "marketing"            # 市场
+
+
 class AssignmentDepartment(str, enum.Enum):
     rd = "rd"
     test = "test"
@@ -71,12 +78,15 @@ class Machine(Base):
     model = Column(String(128), nullable=False)
     description = Column(Text)
     status = Column(Enum(MachineStatus), nullable=False, default=MachineStatus.idle)
-    purchased_at = Column(Date)
+    usage_type = Column(Enum(MachineUsageType), nullable=True)
+    firmware_version = Column(String(128), nullable=True)
+    image_version = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     assignments = relationship("MachineAssignment", back_populates="machine", cascade="all, delete-orphan")
     maintenance_records = relationship("MaintenanceRecord", back_populates="machine", cascade="all, delete-orphan")
     allocations = relationship("MarketingAllocation", back_populates="machine")
+    department = Column(String(64), nullable=True)  # stores department name
 
 
 class MachineAssignment(Base):
@@ -129,12 +139,32 @@ class MarketingRequest(Base):
     end_date = Column(Date, nullable=False)
     quantity_needed = Column(Integer, nullable=False)
     notes = Column(Text)
+    # ── 需求详情 ──────────────────────────────────
+    remote_operation_needed = Column(Boolean, default=False)   # 是否需要遥操
+    dance_needed = Column(Boolean, default=False)              # 是否需要舞蹈
+    dance_source = Column(String(32))                          # existing / custom
+    dance_policy_id = Column(UUID(as_uuid=True), ForeignKey("dance_policies.id"), nullable=True)
+    group_control_needed = Column(Boolean, default=False)      # 是否需要群控
+    voice_needed = Column(Boolean, default=False)              # 语音需求
+    voice_source = Column(String(32))                          # existing / custom
+    voice_package_id = Column(UUID(as_uuid=True), ForeignKey("voice_packages.id"), nullable=True)
+    motion_needed = Column(Boolean, default=False)             # 动作需求
+    motion_source = Column(String(32))                         # existing / custom
+    motion_action_id = Column(UUID(as_uuid=True), ForeignKey("motion_actions.id"), nullable=True)
+    custom_requirements = Column(Text)                         # 定制需求描述
+    # ── 多选资源 ID（JSON 字符串，e.g. '["uuid1","uuid2"]'）────────
+    machine_model = Column(String(64), nullable=True)          # 申请指定的机器型号
+    dance_policy_ids = Column(Text, nullable=True)             # JSON list of dance policy UUIDs
+    voice_package_ids = Column(Text, nullable=True)            # JSON list of voice package UUIDs
+    motion_action_ids = Column(Text, nullable=True)            # JSON list of motion action UUIDs
+    # ─────────────────────────────────────────────
     status = Column(Enum(RequestStatus), nullable=False, default=RequestStatus.pending)
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     reviewed_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     allocations = relationship("MarketingAllocation", back_populates="request", cascade="all, delete-orphan")
+
 
 
 class MarketingAllocation(Base):
@@ -149,3 +179,134 @@ class MarketingAllocation(Base):
 
     request = relationship("MarketingRequest", back_populates="allocations")
     machine = relationship("Machine", back_populates="allocations")
+
+
+# ──────────────────────────────────────────
+# Resource library (admin-managed)
+# ──────────────────────────────────────────
+
+class MachineModelInfo(Base):
+    """机器型号信息（可在网页端维护）"""
+    __tablename__ = "machine_model_infos"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(64), unique=True, nullable=False)   # NIX2 / NIX2.5 / LUS2 / LUS3
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class DancePolicy(Base):
+    """舞蹈 policy 表"""
+    __tablename__ = "dance_policies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False)
+    machine_model = Column(String(64))          # 对应机器型号
+    description = Column(Text)
+    duration_seconds = Column(Integer)           # 时长（秒）
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class MotionAction(Base):
+    """动作库表"""
+    __tablename__ = "motion_actions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False)
+    machine_model = Column(String(64))
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class VoicePackage(Base):
+    """语音包表"""
+    __tablename__ = "voice_packages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False)
+    machine_model = Column(String(64))
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SystemFeature(Base):
+    """功能开关配置 (remote_operation / dance / voice / motion / group_control)"""
+    __tablename__ = "system_features"
+
+    key = Column(String(64), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+
+
+class Department(Base):
+    """可配置的部门选项"""
+    __tablename__ = "departments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(64), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditLog(Base):
+    """管理员操作日志（支持回退）"""
+    __tablename__ = "audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    username = Column(String(64), nullable=True)          # snapshot at write time
+    table_name = Column(String(64), nullable=False)       # e.g. machines
+    record_id = Column(String(64), nullable=False)        # str(uuid)
+    operation = Column(String(16), nullable=False)        # create / update / delete
+    before_data = Column(Text, nullable=True)             # JSON
+    after_data = Column(Text, nullable=True)              # JSON
+    description = Column(String(256), nullable=True)      # human-readable summary
+    reverted = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+# ──────────────────────────────────────────
+# Shipping & After-Sales
+# ──────────────────────────────────────────
+
+class ShippingRequest(Base):
+    """发货需求"""
+    __tablename__ = "shipping_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    requester_name = Column(String(128), nullable=False)
+    requester_contact = Column(String(128))
+    destination = Column(String(256), nullable=False)
+    is_international = Column(Boolean, default=False)
+    items_tools = Column(Text)          # 工具清单
+    items_accessories = Column(Text)    # 配件清单
+    items_components = Column(Text)     # 组件清单
+    has_battery = Column(Boolean, default=False)
+    battery_international_ok = Column(Boolean, default=False)
+    notes = Column(Text)
+    attachments = Column(Text)          # JSON: [{name, url}]
+    status = Column(String(32), default="pending")  # pending/processing/shipped/cancelled
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AfterSalesRequest(Base):
+    """售后需求"""
+    __tablename__ = "after_sales_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    requester_name = Column(String(128), nullable=False)
+    requester_contact = Column(String(128))
+    machine_serial = Column(String(64))
+    machine_model = Column(String(64))
+    issue_type = Column(String(32))     # hardware / software / other
+    issue_description = Column(Text, nullable=False)
+    urgency = Column(String(16), default="normal")  # urgent / normal / low
+    notes = Column(Text)
+    handled_notes = Column(Text)        # 管理员处理备注
+    status = Column(String(32), default="pending")  # pending/in_progress/resolved/closed
+    handled_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Table, Tag, Button, Modal, Form, DatePicker, Input, Select, message, Space, Card, Descriptions, Typography, Switch, Divider, Popconfirm } from 'antd'
 import { CheckOutlined, PlusOutlined, EditOutlined, ArrowLeftOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { maintenanceApi, machinesApi } from '../../api'
+import { maintenanceApi, machinesApi, adminResourcesApi } from '../../api'
 
 export default function MaintenancePage() {
   const [records, setRecords] = useState<any[]>([])
   const [machines, setMachines] = useState<any[]>([])
+  const [damageCauses, setDamageCauses] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)   // 全页面编辑
@@ -24,7 +25,10 @@ export default function MaintenancePage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    adminResourcesApi.listDamageCausePresets().then(r => setDamageCauses(r.data.map((d: any) => d.name)))
+  }, [])
 
   const openEdit = (record: any) => {
     setEditing(record)
@@ -137,7 +141,14 @@ export default function MaintenancePage() {
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item label="损坏原因" name="damage_cause">
-              <Input placeholder="例：碰撞、进水、电路故障" />
+              <Select
+                showSearch mode="tags" maxTagCount={1}
+                placeholder="选择预设原因或手动输入"
+                options={damageCauses.map(c => ({ value: c, label: c }))}
+                onChange={(vals: string[]) => {
+                  editForm.setFieldValue('damage_cause', Array.isArray(vals) ? vals[vals.length - 1] : vals)
+                }}
+              />
             </Form.Item>
             <Form.Item label="损坏描述" name="damage_description">
               <Input.TextArea rows={3} placeholder="详细描述损坏情况" />
@@ -196,7 +207,14 @@ export default function MaintenancePage() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="损坏原因" name="damage_cause" rules={[{ required: true }]}>
-            <Input placeholder="例：碰撞、进水、电路故障" />
+            <Select
+              showSearch mode="tags" maxTagCount={1}
+              placeholder="选择预设原因或手动输入"
+              options={damageCauses.map(c => ({ value: c, label: c }))}
+              onChange={(vals: string[]) => {
+                addForm.setFieldValue('damage_cause', Array.isArray(vals) ? vals[vals.length - 1] : vals)
+              }}
+            />
           </Form.Item>
           <Form.Item label="损坏情况描述" name="damage_description" rules={[{ required: true }]}>
             <Input.TextArea rows={3} placeholder="详细描述损坏情况" />

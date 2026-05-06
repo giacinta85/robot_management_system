@@ -3,6 +3,7 @@ import { Table, Button, Modal, Form, Input, Select, message, Tag, Space, Popconf
 import { PlusOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { machinesApi, adminResourcesApi } from '../../api'
+import { useAuthStore } from '../../store/auth'
 
 const statusColor: Record<string, string> = {
   idle: 'green',
@@ -31,6 +32,7 @@ export default function MachinesPage() {
   const [models, setModels] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const navigate = useNavigate()
+  const role = useAuthStore(s => s.role)
 
   const load = async () => {
     setLoading(true)
@@ -99,9 +101,11 @@ export default function MachinesPage() {
       render: (_: any, record: any) => (
         <Space>
           <Button icon={<EyeOutlined />} size="small" onClick={() => navigate(`/machines/${record.id}`)}>详情</Button>
-          <Popconfirm title="确认删除此机器？" description="关联数据将一并删除。" onConfirm={() => onDelete(record.id)} okText="删除" cancelText="取消" okButtonProps={{ danger: true }}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {role === 'admin' && (
+            <Popconfirm title="确认删除此机器？" description="关联数据将一并删除。" onConfirm={() => onDelete(record.id)} okText="删除" cancelText="取消" okButtonProps={{ danger: true }}>
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -111,7 +115,7 @@ export default function MachinesPage() {
     <div>
       <Space style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>机器列表</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新增机器</Button>
+        {role === 'admin' && <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新增机器</Button>}
       </Space>
       <Table dataSource={machines} columns={columns} rowKey="id" loading={loading} scroll={{ x: true }} />
 

@@ -25,6 +25,14 @@ export const machinesApi = {
   listAssignments: (id: string) => api.get(`/machines/${id}/assignments`),
   createAssignment: (id: string, data: any) => api.post(`/machines/${id}/assignments`, data),
   getStats: () => api.get('/machines/stats/summary'),
+  listResourceLinks: (id: string) => api.get(`/machines/${id}/resource-links`),
+  addResourceLink: (id: string, data: { resource_type: string; resource_id: string }) =>
+    api.post(`/machines/${id}/resource-links`, data),
+  deleteResourceLink: (machineId: string, linkId: string) =>
+    api.delete(`/machines/${machineId}/resource-links/${linkId}`),
+  getAttributeValues: (machineId: string) => api.get(`/machines/${machineId}/attributes`),
+  setAttributeValues: (machineId: string, data: { values: Record<string, string | null> }) =>
+    api.patch(`/machines/${machineId}/attributes`, data),
 }
 
 export const maintenanceApi = {
@@ -33,6 +41,14 @@ export const maintenanceApi = {
   create: (data: any) => api.post('/maintenance', data),
   update: (id: string, data: any) => api.patch(`/maintenance/${id}`, data),
   delete: (id: string) => api.delete(`/maintenance/${id}`),
+}
+
+export const testRecordsApi = {
+  list: (machine_id?: string) => api.get('/test-records', { params: machine_id ? { machine_id } : {} }),
+  get: (id: string) => api.get(`/test-records/${id}`),
+  create: (data: any) => api.post('/test-records', data),
+  update: (id: string, data: any) => api.patch(`/test-records/${id}`, data),
+  delete: (id: string) => api.delete(`/test-records/${id}`),
 }
 
 export const marketingApi = {
@@ -46,6 +62,7 @@ export const marketingApi = {
     api.get('/marketing/availability', { params: { start, end } }),
   getIdleMachines: () => api.get('/marketing/idle-machines'),
   getOccupancy: () => api.get('/marketing/occupancy'),
+  getMachineAllocations: (machineId: string) => api.get(`/marketing/machine-allocations/${machineId}`),
 }
 
 export const adminResourcesApi = {
@@ -75,7 +92,33 @@ export const adminResourcesApi = {
   // Departments
   listDepartments: () => api.get('/admin/departments'),
   createDepartment: (data: { name: string }) => api.post('/admin/departments', data),
+  updateDepartment: (id: string, data: { name: string }) => api.patch(`/admin/departments/${id}`, data),
   deleteDepartment: (id: string) => api.delete('/admin/departments/' + id),
+  // Damage cause presets
+  listDamageCausePresets: () => api.get('/admin/damage-cause-presets'),
+  createDamageCausePreset: (data: { name: string }) => api.post('/admin/damage-cause-presets', data),
+  updateDamageCausePreset: (id: string, data: { name: string }) => api.patch(`/admin/damage-cause-presets/${id}`, data),
+  deleteDamageCausePreset: (id: string) => api.delete(`/admin/damage-cause-presets/${id}`),
+  // Motor firmware versions
+  listMotorFirmwareVersions: (machine_model?: string) => api.get('/admin/motor-firmware-versions', { params: machine_model ? { machine_model } : {} }),
+  createMotorFirmwareVersion: (data: any) => api.post('/admin/motor-firmware-versions', data),
+  updateMotorFirmwareVersion: (id: string, data: any) => api.put(`/admin/motor-firmware-versions/${id}`, data),
+  deleteMotorFirmwareVersion: (id: string) => api.delete(`/admin/motor-firmware-versions/${id}`),
+  // Power board versions
+  listPowerBoardVersions: (machine_model?: string) => api.get('/admin/power-board-versions', { params: machine_model ? { machine_model } : {} }),
+  createPowerBoardVersion: (data: any) => api.post('/admin/power-board-versions', data),
+  updatePowerBoardVersion: (id: string, data: any) => api.put(`/admin/power-board-versions/${id}`, data),
+  deletePowerBoardVersion: (id: string) => api.delete(`/admin/power-board-versions/${id}`),
+  // System image versions
+  listSystemImageVersions: (machine_model?: string) => api.get('/admin/system-image-versions', { params: machine_model ? { machine_model } : {} }),
+  createSystemImageVersion: (data: any) => api.post('/admin/system-image-versions', data),
+  updateSystemImageVersion: (id: string, data: any) => api.put(`/admin/system-image-versions/${id}`, data),
+  deleteSystemImageVersion: (id: string) => api.delete(`/admin/system-image-versions/${id}`),
+  // Attribute Definitions
+  listAttributeDefinitions: () => api.get('/admin/attribute-definitions'),
+  createAttributeDefinition: (data: any) => api.post('/admin/attribute-definitions', data),
+  updateAttributeDefinition: (id: string, data: any) => api.patch(`/admin/attribute-definitions/${id}`, data),
+  deleteAttributeDefinition: (id: string) => api.delete(`/admin/attribute-definitions/${id}`),
 }
 
 export const shippingApi = {

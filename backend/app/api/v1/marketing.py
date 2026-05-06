@@ -184,15 +184,11 @@ async def get_availability(
     resources: list[GanttResource] = [
         GanttResource(
             id=str(m.id),
-            title=(
-                f"{m.serial_number} ["
-                + (
-                    _dept_display.get(m.department or "", "")
-                    or _usage_display.get(m.usage_type.value if m.usage_type else "", "-")
-                )
-                + "]"
-            ),
+            title=m.serial_number,
             status=m.status.value,
+            serial_number=m.serial_number,
+            usage_type=m.usage_type.value if m.usage_type else None,
+            department=m.department or None,
         )
         for m in machines
     ]
@@ -416,4 +412,39 @@ async def get_occupancy(
 
     records.sort(key=lambda r: r["start_date"])
     return records
+
+
+# ── Machine-specific marketing allocations ────
+
+@router.get("/machine-allocations/{machine_id}")
+async def get_machine_allocations(
+    machine_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles(UserRole.admin, UserRole.rd_test)),
+):
+    """返回指定机器的所有市场申请使用记录"""
+    q = (
+        select(MarketingRequest, MarketingAllocation)
+        .join(MarketingAllocation, MarketingAllocation.request_id == MarketingRequest.id)
+        .where(MarketingAllocation.machine_id == machine_id)
+        .order_by(MarketingRequest.start_date.desc())
+    )
+    rows = (await db.execute(q)).all()
+    return [
+        {
+            "id": str(alloc.id),
+            "machine_id": str(alloc.machine_id),
+            "request_id": str(req.id),
+            "event_name": req.event_name,
+            "requester_name": req.requester_name,
+            "requester_contact": req.requester_contact,
+            "location": req.location,
+            "start_date": req.start_date.isoformat(),
+            "end_date": req.end_date.isoformat(),
+            "quantity_needed": req.quantity_needed,
+            "status": req.status.value,
+            "notes": req.notes,
+        }
+        for req, alloc in rows
+    ]
 

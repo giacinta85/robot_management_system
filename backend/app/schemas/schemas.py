@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, field_validator
 
-from app.models.models import UserRole, MachineStatus, MachineUsageType, AssignmentDepartment, RequestStatus
+from app.models.models import UserRole, MachineStatus, MachineUsageType, AssignmentDepartment, RequestStatus, TestStatus
 
 
 # ── Auth ──────────────────────────────────────
@@ -83,6 +83,7 @@ class MachineOut(BaseModel):
 class AssignmentCreate(BaseModel):
     machine_id: UUID
     department: AssignmentDepartment
+    project_name: Optional[str] = None
     start_date: date
     end_date: Optional[date] = None
     notes: Optional[str] = None
@@ -93,6 +94,7 @@ class AssignmentOut(BaseModel):
     id: UUID
     machine_id: UUID
     department: AssignmentDepartment
+    project_name: Optional[str]
     start_date: date
     end_date: Optional[date]
     notes: Optional[str]
@@ -289,6 +291,72 @@ class VoicePackageOut(BaseModel):
     updated_at: datetime
 
 
+# ── Firmware / Image version library ─────────
+
+class MotorFirmwareVersionCreate(BaseModel):
+    name: str
+    machine_model: Optional[str] = None
+    description: Optional[str] = None
+
+
+class MotorFirmwareVersionOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    name: str
+    machine_model: Optional[str]
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class PowerBoardVersionCreate(BaseModel):
+    name: str
+    machine_model: Optional[str] = None
+    description: Optional[str] = None
+
+
+class PowerBoardVersionOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    name: str
+    machine_model: Optional[str]
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class SystemImageVersionCreate(BaseModel):
+    name: str
+    machine_model: Optional[str] = None
+    description: Optional[str] = None
+
+
+class SystemImageVersionOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    name: str
+    machine_model: Optional[str]
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MachineResourceLinkCreate(BaseModel):
+    resource_type: str  # motor_firmware / power_board / system_image
+    resource_id: UUID
+
+
+class MachineResourceLinkOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    machine_id: UUID
+    resource_type: str
+    resource_id: UUID
+    created_at: datetime
+    # resolved resource name (populated in API layer)
+    resource_name: Optional[str] = None
+
+
 # ── Shipping Request ──────────────────────────
 
 class ShippingRequestCreate(BaseModel):
@@ -366,9 +434,12 @@ class GanttEvent(BaseModel):
 
 
 class GanttResource(BaseModel):
-    id: str              # machine serial_number
-    title: str           # serial_number + model
+    id: str              # machine id
+    title: str           # serial_number
     status: str
+    serial_number: str   # for client-side sorting
+    usage_type: Optional[str] = None  # for client-side filtering
+    department: Optional[str] = None  # for department tag display
 
 
 # ── Department ────────────────────────────────
@@ -377,9 +448,121 @@ class DepartmentCreate(BaseModel):
     name: str
 
 
+class DepartmentUpdate(BaseModel):
+    name: str
+
+
 class DepartmentOut(BaseModel):
     model_config = {"from_attributes": True}
     id: UUID
     name: str
     created_at: datetime
+
+
+# ── DamageCausePreset ─────────────────────────
+
+class DamageCausePresetCreate(BaseModel):
+    name: str
+
+
+class DamageCausePresetOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    name: str
+    created_at: datetime
+
+
+# ── TestRecord ────────────────────────────────
+
+class TestRecordCreate(BaseModel):
+    machine_id: UUID
+    project_name: str
+    test_purpose: str
+    test_method: Optional[str] = None
+    test_result: Optional[str] = None
+    tester: Optional[str] = None
+    start_date: date
+    end_date: Optional[date] = None
+    status: TestStatus = TestStatus.in_progress
+    notes: Optional[str] = None
+
+
+class TestRecordUpdate(BaseModel):
+    project_name: Optional[str] = None
+    test_purpose: Optional[str] = None
+    test_method: Optional[str] = None
+    test_result: Optional[str] = None
+    tester: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    status: Optional[TestStatus] = None
+    notes: Optional[str] = None
+
+
+class TestRecordOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    machine_id: UUID
+    project_name: str
+    test_purpose: str
+    test_method: Optional[str]
+    test_result: Optional[str]
+    tester: Optional[str]
+    start_date: date
+    end_date: Optional[date]
+    status: TestStatus
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── Machine Attribute Definitions ─────────────
+
+class MachineAttributeDefinitionCreate(BaseModel):
+    field_key: str
+    display_name: str
+    field_type: str = 'text'
+    preset_values: list[str] = []
+    display_order: int = 0
+
+
+class MachineAttributeDefinitionUpdate(BaseModel):
+    display_name: Optional[str] = None
+    field_type: Optional[str] = None
+    preset_values: Optional[list[str]] = None
+    display_order: Optional[int] = None
+
+
+class MachineAttributeDefinitionOut(BaseModel):
+    model_config = {"from_attributes": True}
+    id: UUID
+    field_key: str
+    display_name: str
+    field_type: str
+    is_system: bool
+    preset_values: list[str] = []
+    display_order: int
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        if hasattr(obj, '__mapper__'):
+            import json as _json
+            data = {c: getattr(obj, c) for c in obj.__mapper__.columns.keys()}
+            raw = data.get('preset_values') or '[]'
+            try:
+                data['preset_values'] = _json.loads(raw)
+            except Exception:
+                data['preset_values'] = []
+            return cls(**data)
+        return super().model_validate(obj, **kwargs)
+
+
+# ── Machine Attribute Values ──────────────────
+
+class MachineAttributeValuesUpdate(BaseModel):
+    values: dict[str, Optional[str]]
+
+
+class MachineAttributeValuesOut(BaseModel):
+    values: dict[str, Optional[str]]
 

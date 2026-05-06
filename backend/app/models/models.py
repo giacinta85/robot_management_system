@@ -85,7 +85,9 @@ class Machine(Base):
 
     assignments = relationship("MachineAssignment", back_populates="machine", cascade="all, delete-orphan")
     maintenance_records = relationship("MaintenanceRecord", back_populates="machine", cascade="all, delete-orphan")
+    test_records = relationship("TestRecord", back_populates="machine", cascade="all, delete-orphan")
     allocations = relationship("MarketingAllocation", back_populates="machine")
+    resource_links = relationship("MachineResourceLink", back_populates="machine", cascade="all, delete-orphan")
     department = Column(String(64), nullable=True)  # stores department name
 
 
@@ -96,6 +98,7 @@ class MachineAssignment(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id"), nullable=False)
     department = Column(Enum(AssignmentDepartment), nullable=False)
+    project_name = Column(String(256), nullable=True)   # 项目名称
     start_date = Column(Date, nullable=False)
     end_date = Column(Date)
     notes = Column(Text)
@@ -249,6 +252,104 @@ class Department(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
 
+class DamageCausePreset(Base):
+    """维修记录损坏原因预设（可在资源库中管理）"""
+    __tablename__ = "damage_cause_presets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(128), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+# ──────────────────────────────────────────
+# Firmware / Image version library
+# ──────────────────────────────────────────
+
+class ResourceLinkType(str, enum.Enum):
+    motor_firmware = "motor_firmware"
+    power_board = "power_board"
+    system_image = "system_image"
+
+
+class MotorFirmwareVersion(Base):
+    """电机固件版本库"""
+    __tablename__ = "motor_firmware_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False)
+    machine_model = Column(String(64), nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PowerBoardVersion(Base):
+    """电源板版本库"""
+    __tablename__ = "power_board_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False)
+    machine_model = Column(String(64), nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SystemImageVersion(Base):
+    """系统镜像版本库"""
+    __tablename__ = "system_image_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(256), nullable=False)
+    machine_model = Column(String(64), nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class MachineResourceLink(Base):
+    """机器与版本资源的关联表（多对多）"""
+    __tablename__ = "machine_resource_links"
+    __table_args__ = (UniqueConstraint("machine_id", "resource_type", "resource_id"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="CASCADE"), nullable=False)
+    resource_type = Column(Enum(ResourceLinkType), nullable=False)
+    resource_id = Column(UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    machine = relationship("Machine", back_populates="resource_links")
+
+
+class TestStatus(str, enum.Enum):
+    in_progress = "in_progress"
+    completed = "completed"
+    failed = "failed"
+    paused = "paused"
+
+
+class TestRecord(Base):
+    """测试记录"""
+    __tablename__ = "test_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id"), nullable=False)
+    project_name = Column(String(256), nullable=False)          # 项目名称
+    test_purpose = Column(Text, nullable=False)                 # 测试目的
+    test_method = Column(Text)                                  # 如何测试
+    test_result = Column(Text)                                  # 测试结果
+    tester = Column(String(128))                                # 负责人
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date)
+    status = Column(Enum(TestStatus), nullable=False, default=TestStatus.in_progress)
+    notes = Column(Text)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    machine = relationship("Machine", back_populates="test_records")
+
+
 class AuditLog(Base):
     """管理员操作日志（支持回退）"""
     __tablename__ = "audit_logs"
@@ -310,3 +411,33 @@ class AfterSalesRequest(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+
+# ──────────────────────────────────────────
+# Machine Attribute Definitions & Values
+# ──────────────────────────────────────────
+
+class MachineAttributeDefinition(Base):
+    """管理员自定义的机器属性字段（含内置系统字段）"""
+    __tablename__ = "machine_attribute_definitions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    field_key = Column(String(128), unique=True, nullable=False)
+    display_name = Column(String(256), nullable=False)
+    field_type = Column(String(32), nullable=False, default='text')  # 'text' | 'select'
+    is_system = Column(Boolean, nullable=False, default=False)
+    preset_values = Column(Text, nullable=True, default='[]')  # JSON list of strings
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class MachineAttributeValue(Base):
+    """每台机器的自定义属性值"""
+    __tablename__ = "machine_attribute_values"
+    __table_args__ = (UniqueConstraint("machine_id", "attribute_key", name="uq_machine_attr"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="CASCADE"), nullable=False)
+    attribute_key = Column(String(128), nullable=False)
+    value = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

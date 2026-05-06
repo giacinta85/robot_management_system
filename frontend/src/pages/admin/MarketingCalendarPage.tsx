@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { Button, DatePicker, Descriptions, Divider, Form, Input, Modal, Popconfirm, Select, Space, Spin, Tag, message } from 'antd'
 import { CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -11,11 +11,23 @@ const statusLabel: Record<string, string> = { pending: '待审批', approved: '�
 const statusColor: Record<string, string> = { pending: 'orange', approved: 'green', rejected: 'red', completed: 'default' }
 const sourceLabel: Record<string, string> = { existing: '使用已有', custom: '需要定制' }
 
+// Stable color map for department tags — hash department name to one of these
+const DEPT_COLORS = ['blue', 'cyan', 'geekblue', 'purple', 'magenta', 'volcano', 'gold', 'lime', 'green', 'orange']
+function deptColor(dept: string): string {
+  let h = 0
+  for (let i = 0; i < dept.length; i++) h = (h * 31 + dept.charCodeAt(i)) & 0xffffffff
+  return DEPT_COLORS[Math.abs(h) % DEPT_COLORS.length]
+}
+
 export default function MarketingCalendarPage() {
   const calendarRef = useRef<any>(null)
   const [resources, setResources] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  // filter/sort state
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [filterStatus, setFilterStatus] = useState<string[]>([])
+  const [filterUsage, setFilterUsage] = useState<string[]>([])
   const [detailReq, setDetailReq] = useState<any>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
@@ -153,11 +165,88 @@ export default function MarketingCalendarPage() {
     return () => clearTimeout(t)
   }, [])
 
+  // Earliest occupied start date per machine (for sorting)
+  const earliestOccupied: Record<string, string> = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const e of events) {
+      if (!map[e.resourceId] || e.start < map[e.resourceId]) {
+        map[e.resourceId] = e.start
+      }
+    }
+    return map
+  }, [events])
+
+  const visibleResources = useMemo(() => {
+    let list = [...resources]
+    // filter by status
+    if (filterStatus.length > 0) {
+      list = list.filter(r => filterStatus.includes(r.status))
+    }
+    // filter by usage_type
+    if (filterUsage.length > 0) {
+      list = list.filter(r => r.usage_type && filterUsage.includes(r.usage_type))
+    }
+    // sort
+    list.sort((a, b) => {
+      if (sortOrder === 'asc') {
+        return a.serial_number.localeCompare(b.serial_number, undefined, { numeric: true })
+      } else if (sortOrder === 'desc') {
+        return b.serial_number.localeCompare(a.serial_number, undefined, { numeric: true })
+      } else if (sortOrder === 'earliest') {
+        const da = earliestOccupied[a.id] ?? '9999'
+        const db2 = earliestOccupied[b.id] ?? '9999'
+        return da < db2 ? -1 : da > db2 ? 1 : 0
+      }
+      return 0
+    })
+    // Assign explicit order index so FullCalendar respects our sort (resourceOrder="order")
+    return list.map((r, i) => ({ ...r, order: i }))
+  }, [resources, filterStatus, filterUsage, sortOrder, earliestOccupied])
+
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <h2 style={{ margin: 0 }}>可用性看板</h2>
         <Button onClick={load}>刷新</Button>
+        <Select
+          style={{ width: 160 }}
+          placeholder="排序方式"
+          value={sortOrder}
+          onChange={setSortOrder}
+          options={[
+            { value: 'asc', label: '机器号从小到大' },
+            { value: 'desc', label: '机器号从大到小' },
+            { value: 'earliest', label: '最早占用优先' },
+          ]}
+        />
+        <Select
+          mode="multiple"
+          style={{ minWidth: 180 }}
+          placeholder="按状态筛选"
+          value={filterStatus}
+          onChange={setFilterStatus}
+          allowClear
+          options={[
+            { value: 'idle', label: '空闲' },
+            { value: 'under_repair', label: '维修中' },
+            { value: 'in_use', label: '使用中' },
+            { value: 'retired', label: '已退役' },
+          ]}
+        />
+        <Select
+          mode="multiple"
+          style={{ minWidth: 180 }}
+          placeholder="按用途筛选"
+          value={filterUsage}
+          onChange={setFilterUsage}
+          allowClear
+          options={[
+            { value: 'motion_control', label: '运控用' },
+            { value: 'software', label: '软件用' },
+            { value: 'testing', label: '测试用' },
+            { value: 'marketing', label: '市场用' },
+          ]}
+        />
       </Space>
 
       <div style={{ padding: '8px', background: '#fff', borderRadius: 8 }}>
@@ -186,11 +275,13 @@ export default function MarketingCalendarPage() {
             .fc-timeline-slot-label.fc-day-today > div { color: #d48806; font-weight: bold; }
           `}</style>
           <FullCalendar
+            key={`${sortOrder}:${filterStatus.join(',')}:${filterUsage.join(',')}`}
             ref={calendarRef}
             plugins={[resourceTimelinePlugin, interactionPlugin]}
             initialView="resourceTimelineMonth"
             schedulerLicenseKey="CC-Attribution-NonCommercial-NoDerivatives"
-            resources={resources}
+            resources={visibleResources}
+            resourceOrder="order"
             events={events}
             nowIndicator={true}
             headerToolbar={{
@@ -200,7 +291,16 @@ export default function MarketingCalendarPage() {
             }}
             slotLabelContent={(arg) => String(arg.date.getDate())}
             resourceAreaHeaderContent="机器"
-            resourceAreaWidth="200px"
+            resourceAreaWidth="220px"
+            resourceLabelContent={(arg) => {
+              const dept = arg.resource.extendedProps?.department
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 500, fontSize: 12 }}>{arg.resource.title}</span>
+                  {dept && <Tag color={deptColor(dept)} style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>{dept}</Tag>}
+                </div>
+              )
+            }}
             height="auto"
             locale="zh-cn"
             slotMinWidth={30}
